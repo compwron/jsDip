@@ -1,4 +1,6 @@
-function State(info) {
+function State (info) {
+    jQuery.extend(true, this, info);
+
     var self = this,
         _counts = null;
 
@@ -35,8 +37,6 @@ function State(info) {
         return null;
     };
 
-    jQuery.extend(this, info);
-
     self.SC = {};
     _(self.SCs).each(function (scList, power) {
         _(scList).each(function (loc) {
@@ -49,6 +49,41 @@ function State(info) {
         });
     });
 }
+
+function Defs (info) {
+    jQuery.extend(true, this, info);
+
+    var self = this,
+        _owningRegion = {};
+
+    this.getOwningRegion = function (loc) {
+        return _owningRegion[loc] || loc;
+    };
+
+    this.getSubRegions = function (loc) {
+        return self.subregions[loc] || [loc];
+    };
+
+    this.getValidRegion = function (loc, type) {
+        if (self.adjacent[loc][type]) {
+            return loc;
+        };
+
+        loc = self.getOwningRegion(loc);
+        _(self.getSubRegions(loc)).each(function (reg) {
+            if (self.adjacent[loc][type]) {
+                return loc;
+            };
+        });
+    };
+
+    _(self.subregions).each(function (subs, reg) {
+        _(subs).each(function (sub) {
+            _region[sub] = reg;
+        });
+        subs.push(reg);
+    });
+};
 
 $(function () {
     var dipMap = new DipMap('#map'),
@@ -91,8 +126,8 @@ $(function () {
         // TODO(ccraciun): Support loading jDip map data..
         jQuery.getJSON(defsUrl)
             .done(function (data) {
-                defs = data;
-                dipMap.setDefs(data);
+                defs = new Defs(data);
+                dipMap.setDefs(defs);
                 console.log('done loadMap');
                 deferred.resolve();
             })
@@ -106,14 +141,14 @@ $(function () {
     }
 
     function setState(newState) {
-        state = new State(newState);
+        state = newState;
         printCounts(state);
         showTime(state);
         dipMap.drawState(state);
+        jQuery('#menu #powers .interf-btn').remove();
         for (i in state.active) {
             pow = state.active[i];
-            jQuery('<span class="separator"> | </span>').appendTo(jQuery('#menu #powers'));
-            jQuery('<a href="#" class="menu-item power ' + pow.toLowerCase() + '"><span>' + pow + '</span></a>').appendTo(jQuery('#menu #powers'));
+            jQuery('<a href="#" class="interf-btn power ' + pow.toLowerCase() + '"><span>' + pow + '</span></a>').appendTo(jQuery('#menu #powers'));
         };
     }
 
@@ -122,7 +157,7 @@ $(function () {
         var deferred = new jQuery.Deferred();
         jQuery.getJSON(stateUrl)
             .done(function (newState) {
-                setState(newState);
+                setState(new State(newState));
                 console.log('done loadStateUrl');
                 deferred.resolve();
             })
@@ -134,16 +169,16 @@ $(function () {
     }
 
     function deselectPowers() {
-        jQuery('#menu .menu-item.selected').removeClass('selected');
-    }
+        jQuery('#menu .interf-btn.selected').removeClass('selected');
+    };
 
     function selectPower(pow) {
         deselectPowers();
-        jQuery('#menu .menu-item.' + pow.toLowerCase()).addClass('selected');
-    }
+        jQuery('#menu .interf-btn.' + pow.toLowerCase()).addClass('selected');
+    };
 
     function selectedPower() {
-        sel = jQuery('#menu .menu-item.selected')[0];
+        sel = jQuery('#menu .interf-btn.selected')[0];
         if (sel) {
             return sel.textContent;
         };
@@ -175,15 +210,26 @@ $(function () {
             };
         };
         // WIP(ccraciun): Stuff here.
-        newState = judge(state, turnOrders);
+        newState = judge(state, turnOrders, defs);
         console.log(newState);
     }
 
     function listenMenu() {
         console.log('listenMenu');
-        jQuery('#menu .menu-item.power').click(clickPower);
-        jQuery('#menu .menu-item.done').click(clickDone);
-        jQuery('#menu .menu-item.end-phase').click(clickEndPhase);
+        jQuery('#menu .interf-btn.power').click(clickPower);
+        jQuery('#menu .interf-btn.done').click(clickDone);
+        jQuery('#menu .interf-btn.end-phase').click(clickEndPhase);
+
+        jQuery('#footer .load-standard').click(function () {
+            // TODO(ccraciun): Need to cleanup orders, reset all state here.
+            loadStateUrl('data/europe_standard_start.json')
+                    .then(listenMenu);
+        });
+        jQuery('#footer .load-sconly').click(function () {
+            // TODO(ccraciun): Need to cleanup orders, reset all state here.
+            loadStateUrl('data/europe_sconly_start.json')
+                    .then(listenMenu);
+        });
     }
 
     jQuery.when(loadMap('data/europe_standard_defs.json', 'images/europe_standard.svg'), loadStateUrl('data/europe_standard_start.json'))
@@ -203,4 +249,8 @@ function StatusBox(statusBoxSelector) {
             text: text
         }).appendTo(statusBox);
     };
-}
+
+    this.clear = function () {
+        statusBox.empty();
+    };
+};
